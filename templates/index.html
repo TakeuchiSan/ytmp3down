@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YTMP3 - Modern Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .loader { border-top-color: #3b82f6; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen font-sans antialiased">
+
+    <header class="py-8 text-center border-b border-gray-800 bg-gray-900 shadow-lg sticky top-0 z-50">
+        <h1 class="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 tracking-tight">
+            <i class="fa-solid fa-cloud-arrow-down mr-2"></i>YTMP3 Pro
+        </h1>
+        <p class="mt-2 text-gray-400 text-sm">Download musik dari YouTube dengan kualitas terbaik</p>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12">
+        <div class="relative group max-w-2xl mx-auto">
+            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <i class="fa-solid fa-magnifying-glass text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
+            </div>
+            <input type="text" id="searchInput" class="block w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-lg text-lg" placeholder="Masukkan URL YouTube atau kata kunci...">
+            <button onclick="handleSearch()" class="absolute inset-y-2 right-2 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors shadow-md">
+                Cari
+            </button>
+        </div>
+
+        <div id="loading" class="hidden mt-12 flex flex-col items-center justify-center">
+            <div class="loader ease-linear rounded-full border-4 border-gray-700 h-12 w-12 mb-4"></div>
+            <p id="loadingText" class="text-gray-400 font-medium animate-pulse">Memproses permintaan Anda...</p>
+        </div>
+
+        <div id="results" class="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
+            </div>
+    </main>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const resultsDiv = document.getElementById('results');
+        const loadingDiv = document.getElementById('loading');
+        const loadingText = document.getElementById('loadingText');
+
+        // Handle enter key
+        searchInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') handleSearch();
+        });
+
+        async function handleSearch() {
+            const query = searchInput.value.trim();
+            if (!query) return;
+
+            // UI Changes
+            resultsDiv.innerHTML = '';
+            resultsDiv.classList.add('hidden');
+            loadingDiv.classList.remove('hidden');
+            loadingText.innerText = "Mencari video...";
+
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+
+                if (res.ok) {
+                    renderResults(data);
+                } else {
+                    alert(data.error || 'Terjadi kesalahan');
+                }
+            } catch (err) {
+                alert('Gagal menghubungi server');
+            } finally {
+                loadingDiv.classList.add('hidden');
+            }
+        }
+
+        function renderResults(items) {
+            resultsDiv.innerHTML = '';
+            resultsDiv.classList.remove('hidden');
+
+            // Cek apakah outputnya 1 URL langsung atau list dari pencarian
+            items.forEach(item => {
+                const card = document.createElement('div');
+                card.className = "bg-gray-800 border border-gray-700 rounded-2xl overflow-hidden shadow-xl hover:shadow-blue-900/20 transition-all hover:-translate-y-1 flex flex-col";
+                
+                // Jika data size_mb tidak ada (dari hasil search), kita sembunyikan atau beri label N/A
+                const sizeBadge = item.size_mb ? `<span class="bg-purple-900/50 text-purple-300 text-xs px-2 py-1 rounded-md ml-2 border border-purple-800"><i class="fa-solid fa-hard-drive mr-1"></i>${item.size_mb} MB</span>` : '';
+
+                card.innerHTML = `
+                    <div class="relative">
+                        <img src="${item.thumbnail}" alt="Thumbnail" class="w-full h-48 object-cover">
+                        <div class="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded font-medium backdrop-blur-sm border border-gray-700">
+                            ${item.duration}
+                        </div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <h3 class="text-white font-semibold line-clamp-2 mb-3 leading-snug">${item.title}</h3>
+                        <div class="mt-auto flex items-center justify-between">
+                            <div class="flex items-center">
+                                ${sizeBadge}
+                            </div>
+                            <button onclick="downloadVideo('${item.url || item.id}')" class="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white px-5 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-blue-500/30 flex items-center gap-2 text-sm">
+                                <i class="fa-solid fa-download"></i> Unduh
+                            </button>
+                        </div>
+                    </div>
+                `;
+                resultsDiv.appendChild(card);
+            });
+        }
+
+        function downloadVideo(urlStr) {
+            // Logic agar mendukung ID atau full URL
+            const finalUrl = urlStr.startsWith('http') ? urlStr : `https://www.youtube.com/watch?v=${urlStr}`;
+            
+            // Tampilkan state loading
+            resultsDiv.classList.add('hidden');
+            loadingDiv.classList.remove('hidden');
+            loadingText.innerText = "Sedang mengunduh dan mengonversi audio (bisa memakan waktu beberapa saat)...";
+
+            // Karena kita mau mengunduh file, kita pakai window.location atau anchor click
+            // Tapi untuk menangkap error, lebih baik gunakan fetch lalu blob
+            fetch(`/api/download?url=${encodeURIComponent(finalUrl)}`)
+                .then(response => {
+                    if (!response.ok) throw new Error("Gagal mengunduh file.");
+                    
+                    const header = response.headers.get('Content-Disposition');
+                    const parts = header.split(';');
+                    let filename = "audio.mp3"; // Fallback name
+                    if (parts.length > 1) {
+                        filename = parts[1].split('=')[1].replace(/"/g, '');
+                    }
+
+                    return response.blob().then(blob => ({blob, filename}));
+                })
+                .then(({blob, filename}) => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    
+                    // Kembalikan UI
+                    loadingDiv.classList.add('hidden');
+                    resultsDiv.classList.remove('hidden');
+                })
+                .catch(err => {
+                    alert(err.message);
+                    loadingDiv.classList.add('hidden');
+                    resultsDiv.classList.remove('hidden');
+                });
+        }
+    </script>
+</body>
+</html>
