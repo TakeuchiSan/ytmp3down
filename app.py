@@ -1,109 +1,78 @@
-from flask import Flask, request, jsonify, send_file
-import yt_dlp
-import os
-import uuid
-import tempfile
+from flask import Flask, request, jsonify, render_template
+import requests
 
 app = Flask(__name__)
 
-def format_duration(seconds):
-    if not seconds: return "00:00"
-    try:
-        seconds = int(float(seconds))
-    except ValueError:
-        return "00:00"
-        
-    m, s = divmod(seconds, 60)
-    h, m = divmod(m, 60)
-    return f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+API_HOST = 'https://cnv.cx'
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0',
+    'Accept': '*/*',
+    'Origin': 'https://x2download.is',
+    'Referer': 'https://x2download.is/',
+    'Content-Type': 'application/x-www-form-urlencoded'
+}
 
+def get_key():
+    try:
+        resp = requests.get(f"{API_HOST}/v2/sanity/key", headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        return resp.json().get('key')
+    except Exception:
+        return None
+
+@app.route('/api/convert', methods=['GET', 'POST'])
+def convert_video():
+    if request.method == 'GET':
+        youtube_url = request.args.get('url')
+        fmt = request.args.get('format', 'mp3')
+        quality = request.args.get('quality', '720')
+    else:
+        data = request.json or {}
+        youtube_url = data.get('url')
+        fmt = data.get('format', 'mp3')
+        quality = data.get('quality', '720')
+
+    if not youtube_url:
+        return jsonify({'status': False, 'message': 'URL parameter required'}), 400
+
+    api_key = get_key()
+    if not api_key:
+        return jsonify({'status': False, 'message': 'Server key fetch failed'}), 500
+
+    payload = {
+        'link': youtube_url,
+        'format': fmt,
+        'audioBitrate': '320',
+        'videoQuality': quality,
+        'vCodec': 'h264'
+    }
+    
+    post_headers = HEADERS.copy()
+    post_headers['Key'] = api_key
+
+    try:
+        resp = requests.post(f"{API_HOST}/v2/converter", headers=post_headers, data=payload, timeout=20)
+        result = resp.json()
+
+        if result.get('status') == 'tunnel' and result.get('url'):
+            return jsonify({
+                'status': True,
+                'data': {
+                    'title': result.get('filename', 'Unknown Title'),
+                    'download_url': result.get('url'),
+                    'format': fmt
+                }
+            })
+        else:
+            return jsonify({'status': False, 'message': 'Conversion failed'}), 400
+
+    except Exception as e:
+        return jsonify({'status': False, 'message': str(e)}), 500
+
+# Ubah route index untuk me-render HTML
 @app.route('/')
 def index():
-    return jsonify({"status": "API YTMP3 Aktif", "message": "Gunakan endpoint /api/search atau /api/download"})
+    return render_template('index.html')
 
-@app.route('/api/search', methods=['GET'])
-def search_yt():
-    query = request.args.get('q')
-    if not query:
-        return jsonify({"error": "Query tidak boleh kosong"}), 400
-
-    base_ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extractor_args': {'youtube': {'client': ['android', 'ios']}},
-        'impersonate': 'chrome'
-    }
-
-    if query.startswith("http"):
-        ydl_opts = {**base_ydl_opts, 'format': 'bestaudio/best', 'noplaylist': True}
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(query, download=False)
-                filesize = info.get('filesize') or info.get('filesize_approx', 0)
-                size_mb = round(filesize / (1024 * 1024), 2) if filesize else "Unknown"
-                
-                return jsonify([{
-                    "type": "url",
-                    "id": info.get('id'),
-                    "url": info.get('webpage_url'),
-                    "title": info.get('title'),
-                    "thumbnail": info.get('thumbnail'),
-                    "duration": format_duration(info.get('duration')),
-                    "size_mb": size_mb
-                }])
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    ydl_opts = {**base_ydl_opts, 'extract_flat': True, 'noplaylist': True}
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            search_result = ydl.extract_info(f"ytsearch5:{query}", download=False)
-            results = [{
-                "type": "search",
-                "id": entry.get('id'),
-                "url": entry.get('url'),
-                "title": entry.get('title'),
-                "thumbnail": entry.get('thumbnails', [{}])[-1].get('url', ''),
-                "duration": format_duration(entry.get('duration', 0))
-            } for entry in search_result.get('entries', [])]
-            return jsonify(results)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/download', methods=['GET'])
-def download_audio():
-    video_url = request.args.get('url')
-    if not video_url:
-        return jsonify({"error": "URL tidak ditemukan"}), 400
-
-    file_id = str(uuid.uuid4())
-    temp_dir = tempfile.gettempdir() 
-    
-    # PERUBAHAN VERCEL: Hapus postprocessor FFMPEG, langsung ambil M4A
-    ydl_opts = {
-        'format': 'bestaudio[ext=m4a]/bestaudio', 
-        'outtmpl': os.path.join(temp_dir, f'{file_id}.%(ext)s'),
-        'quiet': True,
-        'no_warnings': True,
-        'extractor_args': {'youtube': {'client': ['android', 'ios']}},
-        'impersonate': 'chrome'
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=True)
-            clean_title = "".join([c for c in info.get('title', 'audio') if c.isalnum() or c==' ']).rstrip()
-            
-            # File yang terunduh adalah .m4a
-            file_path = os.path.join(temp_dir, f"{file_id}.m4a")
-            
-            return send_file(
-                file_path, 
-                as_attachment=True, 
-                download_name=f"{clean_title}.m4a",
-                mimetype='audio/mp4'
-            )
-    except Exception as e:
-        return jsonify({"error": f"Gagal mengunduh (Mungkin karena timeout Vercel atau IP diblokir): {str(e)}"}), 500
-
-# Tidak perlu if __name__ == '__main__' untuk Vercel
+if __name__ == '__main__':
+    app.run(debug=True)
