@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file
 import yt_dlp
 import os
 import uuid
@@ -6,11 +6,9 @@ import tempfile
 
 app = Flask(__name__)
 
-# Fungsi bantuan untuk format waktu (Sudah diperbaiki untuk menangani Float)
 def format_duration(seconds):
     if not seconds: return "00:00"
     try:
-        # Ubah ke float dulu, lalu ke integer untuk membuang desimalnya
         seconds = int(float(seconds))
     except ValueError:
         return "00:00"
@@ -21,8 +19,7 @@ def format_duration(seconds):
 
 @app.route('/')
 def index():
-    # Pastikan file index.html ada di dalam folder 'templates'
-    return render_template('index.html')
+    return jsonify({"status": "API YTMP3 Aktif", "message": "Gunakan endpoint /api/search atau /api/download"})
 
 @app.route('/api/search', methods=['GET'])
 def search_yt():
@@ -30,26 +27,15 @@ def search_yt():
     if not query:
         return jsonify({"error": "Query tidak boleh kosong"}), 400
 
-    # Konfigurasi yt-dlp dasar untuk search & info URL (tanpa cookies)
     base_ydl_opts = {
         'quiet': True,
         'no_warnings': True,
-        # Trik bypass: Menyamar sebagai aplikasi Android/iOS & browser Chrome
-        'extractor_args': {
-            'youtube': {
-                'client': ['android', 'ios']
-            }
-        },
+        'extractor_args': {'youtube': {'client': ['android', 'ios']}},
         'impersonate': 'chrome'
     }
 
-    # Jika user memasukkan URL
     if query.startswith("http"):
-        ydl_opts = {
-            **base_ydl_opts,
-            'format': 'bestaudio/best', 
-            'noplaylist': True
-        }
+        ydl_opts = {**base_ydl_opts, 'format': 'bestaudio/best', 'noplaylist': True}
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(query, download=False)
@@ -68,27 +54,18 @@ def search_yt():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    # Jika query biasa (ytsearch)
-    ydl_opts = {
-        **base_ydl_opts,
-        'extract_flat': True, 
-        'noplaylist': True
-    }
+    ydl_opts = {**base_ydl_opts, 'extract_flat': True, 'noplaylist': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             search_result = ydl.extract_info(f"ytsearch5:{query}", download=False)
-            entries = search_result.get('entries', [])
-            
-            results = []
-            for entry in entries:
-                results.append({
-                    "type": "search",
-                    "id": entry.get('id'),
-                    "url": entry.get('url'),
-                    "title": entry.get('title'),
-                    "thumbnail": entry.get('thumbnails', [{}])[-1].get('url', ''),
-                    "duration": format_duration(entry.get('duration', 0))
-                })
+            results = [{
+                "type": "search",
+                "id": entry.get('id'),
+                "url": entry.get('url'),
+                "title": entry.get('title'),
+                "thumbnail": entry.get('thumbnails', [{}])[-1].get('url', ''),
+                "duration": format_duration(entry.get('duration', 0))
+            } for entry in search_result.get('entries', [])]
             return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -102,42 +79,31 @@ def download_audio():
     file_id = str(uuid.uuid4())
     temp_dir = tempfile.gettempdir() 
     
+    # PERUBAHAN VERCEL: Hapus postprocessor FFMPEG, langsung ambil M4A
     ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
+        'format': 'bestaudio[ext=m4a]/bestaudio', 
         'outtmpl': os.path.join(temp_dir, f'{file_id}.%(ext)s'),
         'quiet': True,
         'no_warnings': True,
-        # Trik bypass untuk download
-        'extractor_args': {
-            'youtube': {
-                'client': ['android', 'ios'] 
-            }
-        },
+        'extractor_args': {'youtube': {'client': ['android', 'ios']}},
         'impersonate': 'chrome'
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
-            # Membersihkan judul agar tidak error saat dijadikan nama file
             clean_title = "".join([c for c in info.get('title', 'audio') if c.isalnum() or c==' ']).rstrip()
             
-            file_path = os.path.join(temp_dir, f"{file_id}.mp3")
+            # File yang terunduh adalah .m4a
+            file_path = os.path.join(temp_dir, f"{file_id}.m4a")
             
             return send_file(
                 file_path, 
                 as_attachment=True, 
-                download_name=f"{clean_title}.mp3",
-                mimetype='audio/mpeg'
+                download_name=f"{clean_title}.m4a",
+                mimetype='audio/mp4'
             )
     except Exception as e:
-        return jsonify({"error": f"Gagal mengunduh: {str(e)}"}), 500
+        return jsonify({"error": f"Gagal mengunduh (Mungkin karena timeout Vercel atau IP diblokir): {str(e)}"}), 500
 
-if __name__ == '__main__':
-    # Hapus debug=True jika nanti dipindah ke production
-    app.run(debug=True, port=5000)
+# Tidak perlu if __name__ == '__main__' untuk Vercel
