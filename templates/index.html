@@ -7,11 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* Custom font import for elegant look */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        
-        /* Loading Spinner Animation */
         .spinner {
             border: 3px solid rgba(255,255,255,0.3);
             border-radius: 50%;
@@ -28,86 +25,145 @@
     <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40"></div>
     <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-40"></div>
 
-    <div class="relative w-full max-w-lg bg-slate-800/80 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-8 z-10">
+    <div class="relative w-full max-w-2xl bg-slate-800/80 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl p-6 md:p-8 z-10">
         
         <div class="text-center mb-8">
             <h1 class="text-3xl font-bold text-white mb-2 flex items-center justify-center gap-2">
                 <i class="fab fa-youtube text-red-500"></i> YT Downloader
             </h1>
-            <p class="text-slate-400 text-sm">Download audio & video dari YouTube dengan mudah.</p>
+            <p class="text-slate-400 text-sm">Cari judul lagu atau masukkan link YouTube</p>
         </div>
 
-        <form id="downloadForm" class="space-y-5">
-            <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1">Link YouTube</label>
-                <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-link text-slate-400"></i>
-                    </div>
-                    <input type="url" id="urlInput" required placeholder="https://www.youtube.com/watch?v=..." 
-                        class="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+        <form id="searchForm" class="mb-6">
+            <div class="relative flex items-center">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <i class="fas fa-search text-slate-400"></i>
                 </div>
+                <input type="text" id="searchInput" required placeholder="Contoh: Link YouTube atau 'Lagu Pop Terbaru'" 
+                    class="w-full pl-11 pr-32 py-4 bg-slate-900/50 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-lg">
+                <button type="submit" id="searchBtn" class="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 rounded-lg transition-colors flex items-center gap-2">
+                    <div id="searchSpinner" class="spinner hidden"></div>
+                    <span id="searchBtnText">Cari</span>
+                </button>
             </div>
-
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-1">Format</label>
-                    <select id="formatSelect" class="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
-                        <option value="mp3">Audio (MP3)</option>
-                        <option value="mp4">Video (MP4)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-1">Kualitas</label>
-                    <select id="qualitySelect" class="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
-                        <option value="720">Tinggi (320kbps / 720p)</option>
-                        <option value="360">Rendah (128kbps / 360p)</option>
-                    </select>
-                </div>
-            </div>
-
-            <button type="submit" id="submitBtn" class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-lg shadow-blue-500/30 active:scale-[0.98]">
-                <div id="spinner" class="spinner hidden"></div>
-                <span id="btnText"><i class="fas fa-sync-alt mr-2"></i> Convert Sekarang</span>
-            </button>
+            <div id="searchError" class="text-red-400 text-sm mt-2 hidden px-2"></div>
         </form>
 
-        <div id="resultContainer" class="mt-6 hidden">
+        <div id="videoInfoContainer" class="hidden">
+            <div class="bg-slate-900/60 border border-slate-700 rounded-xl p-4 mb-6 flex flex-col md:flex-row gap-5 items-center md:items-start">
+                <div class="w-full md:w-48 flex-shrink-0 relative rounded-lg overflow-hidden shadow-lg border border-slate-600">
+                    <img id="videoThumbnail" src="" alt="Thumbnail" class="w-full aspect-video object-cover">
+                    <div class="absolute inset-0 bg-black/20"></div>
+                </div>
+                
+                <div class="flex-grow w-full">
+                    <h3 id="videoTitle" class="text-white font-semibold text-lg leading-snug mb-2 line-clamp-2">Judul Video</h3>
+                    <p class="text-slate-400 text-sm mb-4 flex items-center gap-2">
+                        <i class="fas fa-user-circle"></i> <span id="videoUploader">Nama Channel</span>
+                    </p>
+
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <select id="formatSelect" class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="mp3">MP3 (Audio)</option>
+                            <option value="mp4">MP4 (Video)</option>
+                        </select>
+                        <select id="qualitySelect" class="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="720">Tinggi (720p)</option>
+                            <option value="360">Rendah (360p)</option>
+                        </select>
+                    </div>
+
+                    <button id="convertBtn" class="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium py-2.5 px-4 rounded-lg transition-all shadow-lg active:scale-[0.98]">
+                        <div id="convertSpinner" class="spinner hidden" style="width: 16px; height: 16px;"></div>
+                        <span id="convertBtnText"><i class="fas fa-download mr-1"></i> Proses Download</span>
+                    </button>
+                </div>
             </div>
+        </div>
+
+        <div id="resultContainer" class="hidden"></div>
 
     </div>
 
     <script>
-        document.getElementById('downloadForm').addEventListener('submit', async (e) => {
+        let currentVideoUrl = "";
+
+        // TAHAP 1: SEARCH & GET INFO
+        document.getElementById('searchForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const urlInput = document.getElementById('urlInput').value;
-            const formatSelect = document.getElementById('formatSelect').value;
-            const qualitySelect = document.getElementById('qualitySelect').value;
-            
-            const btn = document.getElementById('submitBtn');
-            const spinner = document.getElementById('spinner');
-            const btnText = document.getElementById('btnText');
+            const query = document.getElementById('searchInput').value;
+            const btn = document.getElementById('searchBtn');
+            const spinner = document.getElementById('searchSpinner');
+            const btnText = document.getElementById('searchBtnText');
+            const errorDiv = document.getElementById('searchError');
+            const infoContainer = document.getElementById('videoInfoContainer');
             const resultContainer = document.getElementById('resultContainer');
 
-            // Set state to loading
+            // Reset UI
+            btn.disabled = true;
+            spinner.classList.remove('hidden');
+            btnText.textContent = '';
+            errorDiv.classList.add('hidden');
+            infoContainer.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
+                const data = await response.json();
+
+                if (data.status && data.data) {
+                    // Populate data ke Info Card
+                    document.getElementById('videoThumbnail').src = data.data.thumbnail;
+                    document.getElementById('videoTitle').textContent = data.data.title;
+                    document.getElementById('videoUploader').textContent = data.data.uploader || 'YouTube';
+                    currentVideoUrl = data.data.url; // Simpan URL asli untuk proses convert
+                    
+                    // Tampilkan Info Card
+                    infoContainer.classList.remove('hidden');
+                } else {
+                    errorDiv.textContent = data.message || 'Video tidak ditemukan.';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Terjadi kesalahan jaringan.';
+                errorDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                spinner.classList.add('hidden');
+                btnText.textContent = 'Cari';
+            }
+        });
+
+        // TAHAP 2: PROSES KONVERSI & DOWNLOAD
+        document.getElementById('convertBtn').addEventListener('click', async () => {
+            const format = document.getElementById('formatSelect').value;
+            const quality = document.getElementById('qualitySelect').value;
+            
+            const btn = document.getElementById('convertBtn');
+            const spinner = document.getElementById('convertSpinner');
+            const btnText = document.getElementById('convertBtnText');
+            const resultContainer = document.getElementById('resultContainer');
+
             btn.disabled = true;
             btn.classList.add('opacity-75', 'cursor-not-allowed');
             spinner.classList.remove('hidden');
-            btnText.textContent = 'Memproses...';
+            btnText.textContent = 'Menyiapkan File...';
             resultContainer.classList.add('hidden');
             resultContainer.innerHTML = '';
 
             try {
                 const response = await fetch('/api/convert', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        url: urlInput,
-                        format: formatSelect,
-                        quality: qualitySelect
+                        url: currentVideoUrl,
+                        format: format,
+                        quality: quality
                     })
                 });
 
@@ -116,44 +172,36 @@
                 resultContainer.classList.remove('hidden');
 
                 if (data.status && data.data) {
-                    // Success UI
                     resultContainer.innerHTML = `
-                        <div class="p-5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center">
-                            <h3 class="text-emerald-400 font-semibold mb-1">Berhasil!</h3>
-                            <p class="text-slate-300 text-sm mb-4 truncate px-2" title="${data.data.title}">${data.data.title}</p>
+                        <div class="p-5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center animate-fade-in">
+                            <h3 class="text-emerald-400 font-semibold mb-2">Konversi Berhasil!</h3>
                             <a href="${data.data.download_url}" target="_blank" rel="noopener noreferrer" 
-                               class="inline-flex items-center justify-center w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-500/20">
-                                <i class="fas fa-download mr-2"></i> Download ${data.data.format.toUpperCase()}
+                               class="inline-flex items-center justify-center w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-500/20">
+                                <i class="fas fa-cloud-download-alt mr-2"></i> Simpan ${data.data.format.toUpperCase()} ke Perangkat
                             </a>
                         </div>
                     `;
                 } else {
-                    // Error UI from API
-                    showError(data.message || 'Gagal mengonversi video. Silakan coba lagi.');
+                    resultContainer.innerHTML = `
+                        <div class="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-center">
+                            <p class="text-red-400 text-sm">${data.message || 'Gagal mengonversi video. Coba lagi.'}</p>
+                        </div>
+                    `;
                 }
-
             } catch (error) {
-                console.error("Error:", error);
                 resultContainer.classList.remove('hidden');
-                showError('Terjadi kesalahan jaringan atau server tidak merespon.');
+                resultContainer.innerHTML = `
+                    <div class="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-center">
+                        <p class="text-red-400 text-sm">Server sedang sibuk atau error jaringan.</p>
+                    </div>
+                `;
             } finally {
-                // Reset button state
                 btn.disabled = false;
                 btn.classList.remove('opacity-75', 'cursor-not-allowed');
                 spinner.classList.add('hidden');
-                btnText.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Convert Sekarang';
+                btnText.innerHTML = '<i class="fas fa-download mr-1"></i> Proses Download';
             }
         });
-
-        function showError(message) {
-            const resultContainer = document.getElementById('resultContainer');
-            resultContainer.innerHTML = `
-                <div class="p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
-                    <i class="fas fa-exclamation-circle text-red-500 mt-0.5"></i>
-                    <p class="text-red-400 text-sm leading-relaxed">${message}</p>
-                </div>
-            `;
-        }
     </script>
 </body>
 </html>
