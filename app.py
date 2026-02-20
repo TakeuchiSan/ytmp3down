@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template
 import requests
+import re
 
 app = Flask(__name__)
 
@@ -20,17 +21,69 @@ def get_key():
     except Exception:
         return None
 
-@app.route('/api/convert', methods=['GET', 'POST'])
+def extract_video_id(url):
+    # Mengambil ID video dari link YouTube
+    match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
+    return match.group(1) if match else None
+
+# --- ENDPOINT BARU UNTUK SEARCH & INFO VIDEO ---
+@app.route('/api/info', methods=['POST'])
+def get_video_info():
+    data = request.json or {}
+    query = data.get('query', '').strip()
+    
+    if not query:
+        return jsonify({'status': False, 'message': 'Masukkan judul atau link YouTube'}), 400
+
+    try:
+        # Cek apakah input berupa link atau kata kunci
+        if "youtube.com" in query or "youtu.be" in query:
+            video_id = extract_video_id(query)
+            if not video_id:
+                return jsonify({'status': False, 'message': 'Link YouTube tidak valid'}), 400
+                
+            # Ambil info langsung pakai oEmbed (lebih cepat untuk link)
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+            res = requests.get(oembed_url, timeout=10).json()
+            
+            info = {
+                'title': res.get('title'),
+                'thumbnail': res.get('thumbnail_url'),
+                'uploader': res.get('author_name'),
+                'url': f"https://www.youtube.com/watch?v={video_id}"
+            }
+        else:
+            # Jika berupa kata kunci, gunakan Piped API untuk Search
+            search_url = f"https://pipedapi.kavin.rocks/search?q={query}&filter=videos"
+            res = requests.get(search_url, timeout=10).json()
+            items = res.get('items', [])
+            
+            if not items:
+                return jsonify({'status': False, 'message': 'Video tidak ditemukan'}), 404
+                
+            first_video = items[0]
+            video_id = first_video.get('url').split('/watch?v=')[-1]
+            
+            info = {
+                'title': first_video.get('title'),
+                'thumbnail': first_video.get('thumbnail'),
+                'uploader': first_video.get('uploaderName'),
+                'url': f"https://www.youtube.com/watch?v={video_id}"
+            }
+
+        return jsonify({'status': True, 'data': info})
+
+    except Exception as e:
+        print("Error Info API:", str(e))
+        return jsonify({'status': False, 'message': 'Gagal mengambil informasi video. Coba lagi.'}), 500
+
+# --- ENDPOINT CONVERT (Tetap sama) ---
+@app.route('/api/convert', methods=['POST'])
 def convert_video():
-    if request.method == 'GET':
-        youtube_url = request.args.get('url')
-        fmt = request.args.get('format', 'mp3')
-        quality = request.args.get('quality', '720')
-    else:
-        data = request.json or {}
-        youtube_url = data.get('url')
-        fmt = data.get('format', 'mp3')
-        quality = data.get('quality', '720')
+    data = request.json or {}
+    youtube_url = data.get('url')
+    fmt = data.get('format', 'mp3')
+    quality = data.get('quality', '720')
 
     if not youtube_url:
         return jsonify({'status': False, 'message': 'URL parameter required'}), 400
@@ -53,6 +106,7 @@ def convert_video():
     try:
         resp = requests.post(f"{API_HOST}/v2/converter", headers=post_headers, data=payload, timeout=20)
         result = resp.json()
+        print("Convert API Response:", result) # Untuk debug di Vercel
 
         if result.get('status') == 'tunnel' and result.get('url'):
             return jsonify({
@@ -64,12 +118,12 @@ def convert_video():
                 }
             })
         else:
-            return jsonify({'status': False, 'message': 'Conversion failed'}), 400
+            error_msg = result.get('message', 'Konversi gagal dari server.')
+            return jsonify({'status': False, 'message': error_msg}), 400
 
     except Exception as e:
         return jsonify({'status': False, 'message': str(e)}), 500
 
-# Ubah route index untuk me-render HTML
 @app.route('/')
 def index():
     return render_template('index.html')
